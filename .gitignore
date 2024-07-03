@@ -1,9 +1,4 @@
-Binaries
-DerivedDataCache
-Intermediate
-Saved
-.vscode
-.vs
+
 *.VC.db
 *.opensdf
 *.opendb
@@ -12,3 +7,44 @@ Saved
 *.suo
 *.xcodeproj
 *.xcworkspace
+*.vsconfig
+# Ignore Visual Studio files
+.vscode/
+.vs/
+*.vsconfig
+
+# Ignore JetBrains IDE files
+.idea/
+*.iml
+*.DotSettings.user
+
+# Ignore Unreal Engine build files
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# Ignore project-specific settings
+*.sln
+*.suo
+*.user
+*.userosscache
+*.userprefs
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore logs
+*.log
+
+# Ignore temporary files
+*.tmp
+
+# Ignore build directory
+Build/
+
+# Ignore packaged builds
+Antibiosis/
+
+game+ue_tips.txt
