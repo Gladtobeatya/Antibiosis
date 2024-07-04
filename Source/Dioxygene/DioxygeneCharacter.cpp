@@ -2,7 +2,6 @@
 
 #include "DioxygeneCharacter.h"
 #include "DioxygeneProjectile.h"
-#include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -11,7 +10,6 @@
 #include "InputActionValue.h"
 #include "PlayerStateFfa.h"
 #include "Components/AudioComponent.h"
-#include "GameFramework/GameState.h"
 #include "GameFramework/GameStateBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
@@ -47,13 +45,11 @@ ADioxygeneCharacter::ADioxygeneCharacter()
 	AudioComponent->SetupAttachment(FirstPersonCameraComponent);
 	AudioComponent->bAutoActivate = true;
 
-	//VoiceSoundWave = CreateDefaultSubobject<USoundWaveProcedural>(TEXT("VoiceSoundWave"));
-
 	// Create a sphere component that will be used when this player talks so others can hear it too
 	CollisionSphereProximity = CreateDefaultSubobject<USphereComponent>(TEXT("CollisionSphereProximity"));
 	CollisionSphereProximity->SetupAttachment(RootComponent);
-	// 10 meters radius by default
-	CollisionSphereProximity->SetSphereRadius(1500.0f);
+	// 25 meters radius by default
+	CollisionSphereProximity->SetSphereRadius(2000.0f);
 	// TODO for debug purpose
 	CollisionSphereProximity->SetHiddenInGame(false);
 
@@ -74,7 +70,6 @@ void ADioxygeneCharacter::BeginPlay()
 {
 	// Call the base class  
 	Super::BeginPlay();
-	//UE_LOG(LogTemp, Warning, TEXT("begin play dedans"));
 	if (GetLocalRole() == ROLE_Authority)
 	{
 		// This code executes only on the server
@@ -90,12 +85,12 @@ void ADioxygeneCharacter::BeginPlay()
 		// This code executes on a simulated remote client (not authoritative)
 		UE_LOG(LogTemp, Warning, TEXT("BeginPlay: Running on a remote client"));
 	}
-
+	
 	if(SteamAPI_Init() && SteamUser())
 	{
 		IsSteamOK = true;
 		//UE_LOG(LogTemp, Warning, TEXT("Begin play  : steam ini & user OK"));
-		
+	
 		UE_LOG(LogTemp, Warning, TEXT("Begin play  : authority %s"), HasAuthority() ? TEXT("Server") : TEXT("Client"));
 		UE_LOG(LogTemp, Warning, TEXT("Begin play  : steamID %llu"), SteamUser()->GetSteamID().ConvertToUint64());
 	}
@@ -108,12 +103,8 @@ void ADioxygeneCharacter::BeginPlay()
 		VoiceSoundWave->Duration = INDEFINITELY_LOOPING_DURATION;
 		VoiceSoundWave->SoundGroup = SOUNDGROUP_Voice;
 		VoiceSoundWave->bLooping = false;
-		if(VoiceSoundWave)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Begin play  : voice sound OK"));
-			//GetAudioComponent()->SetSound(VoiceSoundWave);
-		}
 	}
+	
 	// Bind overlap events for the sphere component
 	if (CollisionSphereProximity)
 	{
@@ -237,7 +228,7 @@ void ADioxygeneCharacter::ReceiveVoice(CSteamID* SenderSteamID)
 			// Decompress the voice data
 			SteamUser()->DecompressVoice(Packet.GetData(), PacketSize,DecompressedBuffer.GetData(),
 				InitialBufferSize, &DecompBuffSignificantSize, SampleRate);
-			UE_LOG(LogTemp, Warning, TEXT("Receive  : decompressed size : %d"), DecompBuffSignificantSize);
+			//UE_LOG(LogTemp, Warning, TEXT("Receive  : decompressed size : %d"), DecompBuffSignificantSize);
 		}
 	}
 }
@@ -271,7 +262,7 @@ void ADioxygeneCharacter::PlayVoiceDataOnPlayer(const ADioxygeneCharacter* Playe
 
 	if(USoundWaveProcedural* PlayerVoiceSoundWave = Player->GetVoiceSoundWave())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Receive  : playVoice size : %d"), DecompBuffSignificantSize);
+		//UE_LOG(LogTemp, Warning, TEXT("Receive  : playVoice size : %d"), DecompBuffSignificantSize);
 		// Queue audio data to the SoundWaveProcedural
 		PlayerVoiceSoundWave->QueueAudio(DecompressedBuffer.GetData(), DecompBuffSignificantSize);
 		DecompBuffSignificantSize = 0;
@@ -298,14 +289,14 @@ void ADioxygeneCharacter::Tick(float DeltaSeconds)
 	{
 		//UE_LOG(LogTemp, Warning, TEXT("Tick : steam ok"));
 		
-		//TODO REMOVE -- HASAUTHORITY IS JUST FOR TESTING PURPOSE
-		//if(HasAuthority())
-		SendVoice();
+		//TODO REMOVE -- JUST FOR TESTING PURPOSE
+		if(HasAuthority())
+			SendVoice();
 		CSteamID SenderSteamID;
 		ReceiveVoice(&SenderSteamID);
 		if(DecompBuffSignificantSize > 0)
 		{
-			if(const APlayerStateFfa* SenderPlayerState = FindPlayerStateBySteamID(SteamUser()->GetSteamID()))
+			if(const APlayerStateFfa* SenderPlayerState = FindPlayerStateBySteamID(SenderSteamID))
 			{
 				if(const ADioxygeneCharacter* SenderCharacter = Cast<ADioxygeneCharacter>(SenderPlayerState->GetPawn()))
 				{
