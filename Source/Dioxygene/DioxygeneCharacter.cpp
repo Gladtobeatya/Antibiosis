@@ -74,21 +74,6 @@ void ADioxygeneCharacter::BeginPlay()
 {
 	// Call the base class  
 	Super::BeginPlay();
-	if (GetLocalRole() == ROLE_Authority)
-	{
-		// This code executes only on the server
-		UE_LOG(LogTemp, Warning, TEXT("BeginPlay: Running on the server"));
-	}
-	else if (GetLocalRole() == ROLE_AutonomousProxy)
-	{
-		// This code executes on a client controlling a pawn (local client)
-		UE_LOG(LogTemp, Warning, TEXT("BeginPlay: Running on a local client"));
-	}
-	else if (GetLocalRole() == ROLE_SimulatedProxy)
-	{
-		// This code executes on a simulated remote client (not authoritative)
-		UE_LOG(LogTemp, Warning, TEXT("BeginPlay: Running on a remote client"));
-	}
 	
 	if(SteamAPI_Init() && SteamUser())
 	{
@@ -136,6 +121,9 @@ void ADioxygeneCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 
 		// Voice chatting
 		EnhancedInputComponent->BindAction(TalkAction, ETriggerEvent::Started, this, &ADioxygeneCharacter::Talk);
+
+		// Interact
+		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &ADioxygeneCharacter::Interact);
 	}
 	else
 	{
@@ -226,7 +214,7 @@ void ADioxygeneCharacter::ReceiveVoice(CSteamID* SenderSteamID)
 		TArray<uint8> Packet;
 		Packet.SetNum(PacketSize);
 		Packet.AddZeroed(PacketSize);
-		// We read it
+		// Read it
 		if(SteamNetworking()->ReadP2PPacket(Packet.GetData(), PacketSize, &PacketSize, SenderSteamID))
 		{			
 			// Decompress the voice data
@@ -239,7 +227,7 @@ void ADioxygeneCharacter::ReceiveVoice(CSteamID* SenderSteamID)
 
 APlayerStateFfa* ADioxygeneCharacter::FindPlayerStateBySteamID(const CSteamID SteamID)
 {
-	//Just return the LastPlayerStateFound if steamID is the same as before
+	//Return the LastPlayerStateFound if steamID is the same as before (avoids for loop in tick)
 	if(LastPlayerStateFound && LastPlayerStateFound->GetSteamID() == SteamID)
 	{
 		return LastPlayerStateFound;
@@ -321,14 +309,23 @@ void ADioxygeneCharacter::LineTraceTick()
 		HitResult, CameraManager->GetCameraLocation(), EndTraceLocation, FQuat::Identity, TraceChannelProperty, FCollisionShape::MakeSphere(20.0f), QueryParams))
 	{
 		// Draw debug line for visualization
-		DrawDebugLine(GetWorld(), CameraManager->GetCameraLocation(), HitResult.ImpactPoint, FColor::Green, false, 2.0f, 0, 2.0f);
-		if(IInterface_Interact* InteractableActor = Cast<IInterface_Interact>(HitResult.GetActor()))
+		//DrawDebugLine(GetWorld(), CameraManager->GetCameraLocation(), HitResult.ImpactPoint, FColor::Green, false, 2.0f, 0, 2.0f);
+		if(const IInterface_Interact* InteractableActor = Cast<IInterface_Interact>(HitResult.GetActor()))
 		{
-			UE_LOG(LogTemp, Warning, TEXT("YEP"));
-			const TObjectPtr<AActor> HitActor = HitResult.GetActor();
-			InteractableActor->Execute_SetFocused(HitActor);
+			InteractActor = HitResult.GetActor();
+			InteractableActor->Execute_SetFocused(InteractActor);
+		}
+		else
+		{
+			//Reset value so we don't accidentally use it when it is not in focus anymore
+			InteractActor = nullptr;
 		}
 	}
+}
+
+void ADioxygeneCharacter::Server_Interact_Implementation()
+{
+	
 }
 
 void ADioxygeneCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -388,5 +385,14 @@ void ADioxygeneCharacter::Talk()
 			UE_LOG(LogTemp, Warning, TEXT("Talk  : for loop steam id : %s"), *Cast<APlayerStateFfa>(Character->GetPlayerState())->PlayerSteamID);
 		}
 	}
+}
+
+void ADioxygeneCharacter::Interact()
+{
+	if(const IInterface_Interact* InteractableActor = Cast<IInterface_Interact>(InteractActor))
+	{
+		InteractableActor->Execute_Interact(InteractActor);
+	}
+	Server_Interact_Implementation();
 }
 

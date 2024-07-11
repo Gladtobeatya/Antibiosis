@@ -52,6 +52,10 @@ class ADioxygeneCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
 	UInputAction* TalkAction;
 
+	/** Talk Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
+	UInputAction* InteractAction;
+
 	/** Handles the proximity chat bounds : others overlapping can hear player voice */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Collision, meta = (AllowPrivateAccess = "true"))
 	USphereComponent* CollisionSphereProximity;
@@ -77,6 +81,9 @@ class ADioxygeneCharacter : public ACharacter
 	// Line trace distance from the camera, used in tick
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Interaction", meta = (AllowPrivateAccess = "true"))
 	float LineTraceDistance;
+
+	UPROPERTY(BlueprintReadOnly, Category="Interaction", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<AActor> InteractActor;
 	
 public:
 	ADioxygeneCharacter();
@@ -88,7 +95,7 @@ public:
 		
 	/** Look Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
-	class UInputAction* LookAction;
+	UInputAction* LookAction;
 
 protected:
 	/** Called for movement input */
@@ -99,6 +106,9 @@ protected:
 
 	/** Called for talk input */
 	void Talk();
+
+	/** Called for interact input */
+	void Interact();
 
 	// APawn interface
 	virtual void SetupPlayerInputComponent(UInputComponent* InputComponent) override;
@@ -127,6 +137,9 @@ protected:
 
 	//Line trace in front of camera, used for interactable actors
 	void LineTraceTick();
+
+	UFUNCTION(Server, Reliable)
+	void Server_Interact();
 	
 
 public:
