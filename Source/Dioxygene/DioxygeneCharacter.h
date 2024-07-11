@@ -73,6 +73,10 @@ class ADioxygeneCharacter : public ACharacter
 	//Avoid going through every player in the game every time we receive data from the same player (ex : ReceiveVoice)
 	UPROPERTY()
 	APlayerStateFfa* LastPlayerStateFound;
+
+	// Line trace distance from the camera, used in tick
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Interaction", meta = (AllowPrivateAccess = "true"))
+	float LineTraceDistance;
 	
 public:
 	ADioxygeneCharacter();
@@ -117,6 +121,12 @@ protected:
 	APlayerStateFfa* FindPlayerStateBySteamID(const CSteamID SteamID);
 
 	void PlayVoiceDataOnPlayer(const ADioxygeneCharacter* Player);
+
+	//Voice Chat logic where we record player's voice, and also play other players voice in their own audio component (only locally, voice is sent with P2P)
+	void VoiceChatTick();
+
+	//Line trace in front of camera, used for interactable actors
+	void LineTraceTick();
 	
 
 public:
@@ -138,6 +148,10 @@ public:
 	//Used for proximity chat : we only send data to people overlapping with collisionSphereProximity
 	UPROPERTY(Replicated, BlueprintReadOnly, Category = "ProxChat")
 	TArray<ADioxygeneCharacter*> OverlappingCharacters;
+
+	//Sets the line trace channel to use for interaction in tick (by default : "Interaction")
+	UPROPERTY(EditAnywhere, Category="Interaction")
+	TEnumAsByte<ECollisionChannel> TraceChannelProperty = ECC_GameTraceChannel2;
 	
 };
 

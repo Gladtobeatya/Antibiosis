@@ -8,6 +8,7 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "Interface_Interact.h"
 #include "PlayerStateFfa.h"
 #include "Components/AudioComponent.h"
 #include "GameFramework/GameStateBase.h"
@@ -64,6 +65,9 @@ ADioxygeneCharacter::ADioxygeneCharacter()
 	DecompressedBuffer.AddZeroed(InitialBufferSize);
 	DecompBuffSignificantSize = 0;
 	SampleRate = 44100;
+
+	//Initializes distance from the camera to 5 meters for line trace (used in tick)
+	LineTraceDistance = 200.0f;
 }
 
 void ADioxygeneCharacter::BeginPlay()
@@ -275,6 +279,58 @@ void ADioxygeneCharacter::PlayVoiceDataOnPlayer(const ADioxygeneCharacter* Playe
 	}
 }
 
+void ADioxygeneCharacter::VoiceChatTick()
+{
+	if(!IsSteamOK || !IsLocallyControlled())
+		return;
+	//UE_LOG(LogTemp, Warning, TEXT("Tick : steam ok"));
+			
+	//TODO REMOVE -- JUST FOR TESTING PURPOSE
+	if(HasAuthority())
+		SendVoice();
+	CSteamID SenderSteamID;
+	ReceiveVoice(&SenderSteamID);
+	if(DecompBuffSignificantSize > 0)
+	{
+		if(const APlayerStateFfa* SenderPlayerState = FindPlayerStateBySteamID(SenderSteamID))
+		{
+			if(const ADioxygeneCharacter* SenderCharacter = Cast<ADioxygeneCharacter>(SenderPlayerState->GetPawn()))
+			{
+				PlayVoiceDataOnPlayer(SenderCharacter);
+			}
+		}
+	}
+}
+
+void ADioxygeneCharacter::LineTraceTick()
+{
+	if(!IsLocallyControlled())
+		return;
+	
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+
+	const TObjectPtr<APlayerCameraManager> CameraManager = GetWorld()->GetFirstPlayerController()->PlayerCameraManager;
+
+	//End location is basically "LineTraceDistance" forward to player view
+	const FVector EndTraceLocation = CameraManager->GetActorForwardVector() * LineTraceDistance + CameraManager->GetCameraLocation();
+
+	//ECC_GameTraceChannel1 is "Interaction" trace channel
+	
+	if(FHitResult HitResult; GetWorld()->SweepSingleByChannel(
+		HitResult, CameraManager->GetCameraLocation(), EndTraceLocation, FQuat::Identity, TraceChannelProperty, FCollisionShape::MakeSphere(20.0f), QueryParams))
+	{
+		// Draw debug line for visualization
+		DrawDebugLine(GetWorld(), CameraManager->GetCameraLocation(), HitResult.ImpactPoint, FColor::Green, false, 2.0f, 0, 2.0f);
+		if(IInterface_Interact* InteractableActor = Cast<IInterface_Interact>(HitResult.GetActor()))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("YEP"));
+			const TObjectPtr<AActor> HitActor = HitResult.GetActor();
+			InteractableActor->Execute_SetFocused(HitActor);
+		}
+	}
+}
+
 void ADioxygeneCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
@@ -284,27 +340,9 @@ void ADioxygeneCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 void ADioxygeneCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-
-	if(IsSteamOK && IsLocallyControlled())
-	{
-		//UE_LOG(LogTemp, Warning, TEXT("Tick : steam ok"));
-		
-		//TODO REMOVE -- JUST FOR TESTING PURPOSE
-		if(HasAuthority())
-			SendVoice();
-		CSteamID SenderSteamID;
-		ReceiveVoice(&SenderSteamID);
-		if(DecompBuffSignificantSize > 0)
-		{
-			if(const APlayerStateFfa* SenderPlayerState = FindPlayerStateBySteamID(SenderSteamID))
-			{
-				if(const ADioxygeneCharacter* SenderCharacter = Cast<ADioxygeneCharacter>(SenderPlayerState->GetPawn()))
-				{
-					PlayVoiceDataOnPlayer(SenderCharacter);
-				}
-			}
-		}
-	}
+	
+	LineTraceTick();
+	VoiceChatTick();
 }
 
 void ADioxygeneCharacter::Move(const FInputActionValue& Value)
