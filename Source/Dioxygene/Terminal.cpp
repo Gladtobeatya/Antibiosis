@@ -24,7 +24,6 @@ ATerminal::ATerminal()
 void ATerminal::BeginPlay()
 {
 	Super::BeginPlay();
-	
 }
 
 // Called every frame
