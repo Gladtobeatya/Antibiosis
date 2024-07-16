@@ -314,13 +314,13 @@ void ADioxygeneCharacter::LineTraceTick()
 		{
 			InteractActor = HitResult.GetActor();
 			InteractableActor->Execute_SetFocused(InteractActor);
-		}
-		else
-		{
-			//Reset value so we don't accidentally use it when it is not in focus anymore
-			InteractActor = nullptr;
+			return;
 		}
 	}
+	
+	//Reset value so we don't accidentally use it when it is not in focus anymore
+	if(InteractActor)
+		InteractActor = nullptr;
 }
 
 void ADioxygeneCharacter::Server_Interact_Implementation()
