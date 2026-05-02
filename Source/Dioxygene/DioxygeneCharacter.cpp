@@ -10,7 +10,11 @@
 #include "InputActionValue.h"
 #include "Interface_Interact.h"
 #include "PlayerStateFfa.h"
+#include "CombatManager.h"
+#include "CombatTypes.h"
+#include "SpellTest.h"
 #include "Components/AudioComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameStateBase.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
@@ -68,12 +72,15 @@ ADioxygeneCharacter::ADioxygeneCharacter()
 
 	//Initializes distance from the camera to 5 meters for line trace (used in tick)
 	LineTraceDistance = 200.0f;
+	
+	MaxHealth = 100.f;
 }
 
 void ADioxygeneCharacter::BeginPlay()
 {
 	// Call the base class  
 	Super::BeginPlay();
+	CurrentHealth = MaxHealth;
 	
 	if(SteamAPI_Init() && SteamUser())
 	{
@@ -83,6 +90,7 @@ void ADioxygeneCharacter::BeginPlay()
 		UE_LOG(LogTemp, Warning, TEXT("Begin play  : authority %s"), HasAuthority() ? TEXT("Server") : TEXT("Client"));
 		UE_LOG(LogTemp, Warning, TEXT("Begin play  : steamID %llu"), SteamUser()->GetSteamID().ConvertToUint64());
 	}
+	//Sets up voice for multi
 	if(AudioComponent)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("Begin play  : audio component OK"));
@@ -99,7 +107,7 @@ void ADioxygeneCharacter::BeginPlay()
 	{
 		CollisionSphereProximity->OnComponentBeginOverlap.AddDynamic(this, &ADioxygeneCharacter::OnOverlapBegin);
 		CollisionSphereProximity->OnComponentEndOverlap.AddDynamic(this, &ADioxygeneCharacter::OnOverlapEnd);
-	}
+	}	
 }
 
 //////////////////////////////////////////////////////////////////////////// Input
@@ -124,6 +132,9 @@ void ADioxygeneCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 
 		// Interact
 		EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &ADioxygeneCharacter::Interact);
+		
+		EnhancedInputComponent->BindAction(ParryAction, ETriggerEvent::Started, this, &ADioxygeneCharacter::StartParry);
+		EnhancedInputComponent->BindAction(ParryAction, ETriggerEvent::Completed, this, &ADioxygeneCharacter::EndParry);
 	}
 	else
 	{
@@ -137,11 +148,14 @@ void ADioxygeneCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComponen
 	if(!HasAuthority())
 		return;
 	
-	// Check if the overlapping actor is another character, and we actually overlap with capsule component, and not self
-	if (ADioxygeneCharacter* OtherCharacter = Cast<ADioxygeneCharacter>(OtherActor); Cast<UCapsuleComponent>(OtherComp) && OtherCharacter != this)
+	// Check if overlapping actor is a ADioxygeneCharacter and not self
+	if (ADioxygeneCharacter* OtherCharacter = Cast<ADioxygeneCharacter>(OtherActor))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("OCOB : ADD"));
-		OverlappingCharacters.AddUnique(OtherCharacter);
+		if (Cast<UCapsuleComponent>(OtherComp) && OtherCharacter != this)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("OCOB : ADD"));
+			OverlappingCharacters.AddUnique(OtherCharacter);
+		}
 	}
 }
 
@@ -149,12 +163,15 @@ void ADioxygeneCharacter::OnOverlapEnd(UPrimitiveComponent* OverlappedComponent,
 {
 	if(!HasAuthority())
 		return;
-	
+
 	// Check if the overlapping actor is another character
-	if (ADioxygeneCharacter* OtherCharacter = Cast<ADioxygeneCharacter>(OtherActor); Cast<UCapsuleComponent>(OtherComp))
+	if (ADioxygeneCharacter* OtherCharacter = Cast<ADioxygeneCharacter>(OtherActor))
 	{
+		if (Cast<UCapsuleComponent>(OtherComp))
+		{
 			UE_LOG(LogTemp, Warning, TEXT("OCOB : REMOVE"));
 			OverlappingCharacters.Remove(OtherCharacter);
+		}
 	}
 }
 
@@ -342,6 +359,70 @@ void ADioxygeneCharacter::Tick(float DeltaSeconds)
 	VoiceChatTick();
 }
 
+bool ADioxygeneCharacter::IsDead()
+{
+	return bIsDead;
+}
+
+void ADioxygeneCharacter::OnMyTurnStart_Implementation()
+{
+	UE_LOG(LogTemp, Warning, TEXT("Diocharacter : Character turn started!"));
+	
+	//My turn ended
+	//OnPlayerTurnEnded.Broadcast();
+}
+
+void ADioxygeneCharacter::EndPlayerTurn()
+{
+	OnPlayerTurnEnded.Broadcast();
+}
+
+void ADioxygeneCharacter::SetCombatManager(ACombatManager* Manager)
+{
+	check(Manager);
+	CombatManagerRef = Manager;
+}
+
+EParryResult ADioxygeneCharacter::CheckParry(const float PerfectWindow) const
+{
+	if(bIsParrying)
+	{
+		if(const float CurrentTime = GetWorld()->GetTimeSeconds(); CurrentTime - ParryStartTime > PerfectWindow)
+		{
+			return EParryResult::NormalParry;
+		}
+		return EParryResult::PerfectParry;
+	}
+	return EParryResult::NoParry;
+}
+
+TArray<TSubclassOf<USpellBase>> ADioxygeneCharacter::GetAvailableSpells()
+{
+	return AvailableSpells;
+}
+
+void ADioxygeneCharacter::AddSpell(const TSubclassOf<USpellBase>& NewSpell)
+{
+	AvailableSpells.AddUnique(NewSpell);
+}
+
+void ADioxygeneCharacter::ReceiveDamage(float DamageAmount)
+{
+	CurrentHealth -= DamageAmount;
+	UE_LOG(LogTemp, Warning, TEXT("DioCharacter : Health after dmg taken : %f"), CurrentHealth);
+	if(CurrentHealth <= 0.f)
+	{
+		CurrentHealth = 0.f;
+		Die();
+	}
+}
+
+void ADioxygeneCharacter::Die_Implementation()
+{
+	UE_LOG(LogTemp, Warning, TEXT("Character died!"))
+	bIsDead = true;
+}
+
 void ADioxygeneCharacter::Move(const FInputActionValue& Value)
 {
 	// input is a Vector2D
@@ -371,12 +452,12 @@ void ADioxygeneCharacter::Look(const FInputActionValue& Value)
 void ADioxygeneCharacter::Talk()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Talk  :  %s"), HasAuthority() ? TEXT("Server") : TEXT("Client"));
-	if (APlayerStateFfa* myPlayerState = Cast<APlayerStateFfa>(GetPlayerState()))
+	if (const APlayerStateFfa* MyPlayerState = Cast<APlayerStateFfa>(GetPlayerState()); IsSteamOK)
 	{
 		// Set the PlayerSteamID
 		//PlayerState->InitSteamID();
 		UE_LOG(LogTemp, Warning, TEXT("Talk  : steam ID %s"),
-			*FString::Printf(TEXT("%llu"), myPlayerState->GetSteamID().ConvertToUint64()));
+			*FString::Printf(TEXT("%llu"), MyPlayerState->GetSteamID().ConvertToUint64()));
 		UE_LOG(LogTemp, Warning, TEXT("Talk  : steam ID real %s"),
 			*FString::Printf(TEXT("%llu"), SteamUser()->GetSteamID().ConvertToUint64()));
 		//CheckOverlappingCharacter();
@@ -394,5 +475,73 @@ void ADioxygeneCharacter::Interact()
 		InteractableActor->Execute_Interact(InteractActor);
 	}
 	Server_Interact_Implementation();
+}
+
+void ADioxygeneCharacter::StartParry()
+{
+	bIsParrying = true;
+	ParryStartTime = GetWorld()->GetTimeSeconds();
+	UE_LOG(LogTemp, Warning, TEXT("Diocharacter : Start parry"));
+}
+
+void ADioxygeneCharacter::EndParry()
+{
+	bIsParrying = false;
+	UE_LOG(LogTemp, Warning, TEXT("Diocharacter : End parry"));
+}
+
+void ADioxygeneCharacter::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+	if (APlayerStateFfa* PS = GetPlayerState<APlayerStateFfa>())
+	{
+		PS->OnPlayingPhaseChanged.AddUObject(this, &ADioxygeneCharacter::HandlePlayingPhaseChange);
+	}
+}
+
+void ADioxygeneCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
+	
+	if (APlayerStateFfa* PS = GetPlayerState<APlayerStateFfa>())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Possessed By"));
+		PS->OnPlayingPhaseChanged.AddUObject(this, &ADioxygeneCharacter::HandlePlayingPhaseChange);
+	}
+}
+
+void ADioxygeneCharacter::HandlePlayingPhaseChange(const APlayerStateFfa* CurrentPlayerState, const EPlayingPhase NewPhase)
+{
+	if (NewPhase == EPlayingPhase::Combat)
+	{
+		DisableMovementInput();
+		FocusCombatCamera();
+	}
+	else if(NewPhase == EPlayingPhase::Exploration)
+	{
+		EnableMovementInput();
+	}
+}
+
+void ADioxygeneCharacter::DisableMovementInput() const
+{
+	if(UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+			MoveComp->DisableMovement();
+	}
+}
+
+void ADioxygeneCharacter::EnableMovementInput() const
+{
+	if(UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->SetMovementMode(EMovementMode::MOVE_Walking);
+	}
+}
+
+void ADioxygeneCharacter::FocusCombatCamera()
+{
+	//TODO interpole vers une camera fixe, zoom combat, etc..
+	UE_LOG(LogTemp, Warning, TEXT("Camera would focus here"));
 }
 

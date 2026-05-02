@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "PlayerStateFfa.h"
 #include "GameFramework/GameMode.h"
 #include "DioxygeneGameMode.generated.h"
 
@@ -14,7 +15,8 @@ class DIOXYGENE_API AGameModeFFA : public AGameMode
 {
 	GENERATED_BODY()
 
-	
+	UFUNCTION()
+	void HandlePlayingPhaseChanged(const APlayerStateFfa* PlayerState, const EPlayingPhase NewPhase);
 
 public:
 	virtual void PostLogin(APlayerController* NewPlayer) override;

@@ -5,6 +5,11 @@
 
 #include "Net/UnrealNetwork.h"
 
+APlayerStateFfa::APlayerStateFfa()
+{
+	CurrentPlayingPhase = EPlayingPhase::Exploration;
+}
+
 void APlayerStateFfa::BeginPlay()
 {
 	Super::BeginPlay();
@@ -16,10 +21,40 @@ void APlayerStateFfa::BeginPlay()
 	}
 }
 
+void APlayerStateFfa::SetPlayingPhase(const EPlayingPhase PlayingPhase)
+{
+	if(CurrentPlayingPhase != PlayingPhase)
+	{
+		CurrentPlayingPhase = PlayingPhase;
+		// Debug log
+		UE_LOG(LogTemp, Warning, TEXT("Playing phase set to: %s"), *UEnum::GetValueAsString(CurrentPlayingPhase));
+		
+		// Broadcast to subscribed C++
+		OnPlayingPhaseChanged.Broadcast(this, PlayingPhase);
+		// Call to Blueprints
+		OnPlayingPhaseChanged_BP(this, PlayingPhase);
+		
+		// TODO ?: notify UI, etc.
+	}
+}
+
+void APlayerStateFfa::TriggerCombat(AEnemyDummy* InEnemy)
+{
+	EnemyInCombat = InEnemy;
+	SetPlayingPhase(EPlayingPhase::Combat);
+}
+
+void APlayerStateFfa::TriggerExploration()
+{
+	EnemyInCombat = nullptr;
+	SetPlayingPhase(EPlayingPhase::Exploration);
+}
+
 void APlayerStateFfa::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(APlayerStateFfa, PlayerSteamID);
+	DOREPLIFETIME(APlayerStateFfa, CurrentPlayingPhase);
 }
 
 void APlayerStateFfa::InitSteamID()

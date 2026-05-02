@@ -7,6 +7,7 @@
 #include "GameFramework/PlayerController.h"
 #include "DioxygenePlayerController.generated.h"
 
+class USpellBase;
 class UInputMappingContext;
 
 /**
@@ -26,4 +27,9 @@ protected:
 	virtual void BeginPlay() override;
 
 public :
+	UPROPERTY(BlueprintReadWrite, Category="Combat")
+	class AEnemyCharacter* SelectedTarget;
+
+	UPROPERTY(BlueprintReadWrite, Category="Combat")
+	TSubclassOf<USpellBase> PendingSpell;
 };

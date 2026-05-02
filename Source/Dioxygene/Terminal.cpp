@@ -15,9 +15,7 @@ ATerminal::ATerminal()
 	// Create a mesh component that will be viewed as this terminal
 	TerminalMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TerminalMesh"));
 	TerminalMesh->SetupAttachment(Root);
-
-	//Set default InteractValue, it should match with the other actor(s) this object should trigger when player is interacting
-	InteractValue = 0;
+	
 }
 
 // Called when the game starts or when spawned
@@ -36,5 +34,16 @@ void ATerminal::Tick(float DeltaTime)
 void ATerminal::Interact_Implementation()
 {
 	UE_LOG(LogTemp, Warning, TEXT("Interact!"));
+}
+
+void ATerminal::CallLinkedActors()
+{
+	for(auto LinkedActor : LinkedActors)
+	{
+		if(const IInterface_Interact* InteractableActor = Cast<IInterface_Interact>(LinkedActor))
+		{
+			InteractableActor->Execute_Interact(LinkedActor);
+		}
+	}
 }
 

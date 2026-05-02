@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "PlayerStateFfa.h"
+#include "SpellBase.h"
 #include "Components/SphereComponent.h"
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
@@ -11,14 +12,17 @@
 #include "DioxygeneCharacter.generated.h"
 
 
+enum class EParryResult : uint8;
 class UInputComponent;
 class USkeletalMeshComponent;
 class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
+class ACombatManager;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerTurnEnded);
 
 UCLASS(config=Game)
 class ADioxygeneCharacter : public ACharacter
@@ -52,9 +56,13 @@ class ADioxygeneCharacter : public ACharacter
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
 	UInputAction* TalkAction;
 
-	/** Talk Input Action */
+	/** Interact Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
 	UInputAction* InteractAction;
+
+	/** Parry Input Action */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Input, meta=(AllowPrivateAccess = "true"))
+	UInputAction* ParryAction;
 
 	/** Handles the proximity chat bounds : others overlapping can hear player voice */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Collision, meta = (AllowPrivateAccess = "true"))
@@ -88,6 +96,12 @@ class ADioxygeneCharacter : public ACharacter
 public:
 	ADioxygeneCharacter();
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Combat")
+	float MaxHealth = 100.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Combat")
+	float CurrentHealth;
+
 protected:
 	virtual void BeginPlay();
 
@@ -96,7 +110,46 @@ public:
 	/** Look Input Action */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* LookAction;
+	
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category="Combat")
+	void OnMyTurnStart();
+	//Called before Blueprint implementation
+	virtual void OnMyTurnStart_Implementation();
 
+	// Called when anim/attack is done, and the turn ended
+	UPROPERTY(BlueprintAssignable)
+	FOnPlayerTurnEnded OnPlayerTurnEnded;
+
+	// Use this function so we can broadcast from BP
+	UFUNCTION(BlueprintCallable)
+	void EndPlayerTurn();
+
+	UFUNCTION()
+	void SetCombatManager(ACombatManager* Manager);
+
+	//Function used to check the parry result. We do it in character as if we have internal modifiers it could alter the actual result of function
+	UFUNCTION()
+	EParryResult CheckParry(float PerfectWindow) const;
+
+	UPROPERTY(BlueprintReadOnly, Category="Combat")
+	ACombatManager* CombatManagerRef;
+
+	//Spells the player can use, editable dynamically
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Spell")
+	TArray<TSubclassOf<USpellBase>> AvailableSpells;
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category="Spell")
+	TArray<TSubclassOf<USpellBase>> GetAvailableSpells();
+
+	void AddSpell(const TSubclassOf<USpellBase>& NewSpell);
+
+	UFUNCTION(BlueprintCallable, Category="Combat")
+	void ReceiveDamage(float DamageAmount);
+
+	UFUNCTION(BlueprintNativeEvent, Category="Combat")
+	void Die();
+	virtual void Die_Implementation();
+	
 protected:
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
@@ -109,6 +162,21 @@ protected:
 
 	/** Called for interact input */
 	void Interact();
+
+	/** Called for start parry input */
+	void StartParry();
+
+	/** Called for end parry input */
+	void EndParry();
+
+	virtual void OnRep_PlayerState() override;
+	virtual void PossessedBy(AController* NewController) override;
+	UFUNCTION()
+	void HandlePlayingPhaseChange(const APlayerStateFfa* CurrentPlayerState, const EPlayingPhase NewPhase);
+	
+	void DisableMovementInput() const;
+	void EnableMovementInput() const;
+	void FocusCombatCamera();
 
 	// APawn interface
 	virtual void SetupPlayerInputComponent(UInputComponent* InputComponent) override;
@@ -165,6 +233,20 @@ public:
 	//Sets the line trace channel to use for interaction in tick (by default : "Interaction")
 	UPROPERTY(EditAnywhere, Category="Interaction")
 	TEnumAsByte<ECollisionChannel> TraceChannelProperty = ECC_GameTraceChannel2;
+	
+private:
+	UPROPERTY()
+	bool bIsDead = false;
+
+	UPROPERTY()
+	float ParryStartTime;
+
+	UPROPERTY()
+	bool bIsParrying = false;
+	
+public:
+	UFUNCTION()
+	bool IsDead();
 	
 };
 
